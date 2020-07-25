@@ -454,7 +454,7 @@ public class Settings implements Activity {
 		parent.getContentPane().add(compute_devices_panel, constraints);
 		
 		// other
-		CollapsibleJPanel advanced_panel = new CollapsibleJPanel(new GridLayout(4, 2));
+		CollapsibleJPanel advanced_panel = new CollapsibleJPanel(new GridLayout(5, 2));
 		advanced_panel.setBorder(BorderFactory.createTitledBorder("Advanced options"));
 		
 		JLabel useSysTrayLabel = new JLabel("Minimize to SysTray");
