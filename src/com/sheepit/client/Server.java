@@ -28,8 +28,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -272,6 +270,8 @@ public class Server extends Thread {
 				.addQueryParameter("cpu_cores", String.valueOf(user_config.getNbCores() == -1 ? os.getCPU().cores() : user_config.getNbCores()))
 				.addQueryParameter("ram_max", String.valueOf(maxMemory))
 				.addQueryParameter("rendertime_max", String.valueOf(user_config.getMaxRenderTime()));
+				// maybe scheduler wants to lower priority of gigantic resolution output images for people who throttle?
+				//.addQueryParameter("upspeed_max", String.valueOf(user_config.getMaxUploadSpeed()));
 			
 			if (user_config.getComputeMethod() != ComputeType.CPU && user_config.getGPUDevice() != null) {
 				urlBuilder.addQueryParameter("gpu_model", user_config.getGPUDevice().getModel())
@@ -492,7 +492,7 @@ public class Server extends Thread {
 		this.log.debug(String.format("Server::HTTPGetFile(%s) did fail", url_));
 		return Error.Type.DOWNLOAD_FILE;
 	}
-	
+
 	public ServerCode HTTPSendFile(String surl, String file1, int checkpoint) {
 		this.log.debug(checkpoint, "Server::HTTPSendFile(" + surl + "," + file1 + ")");
 		
@@ -501,10 +501,15 @@ public class Server extends Thread {
 
 			MediaType MEDIA_TYPE = MediaType.parse(fileMimeType); // e.g. "image/png"
 			
-			RequestBody uploadContent = new MultipartBody.Builder().setType(MultipartBody.FORM)
+			MultipartBody uploadContent = new MultipartBody.Builder().setType(MultipartBody.FORM)
 				.addFormDataPart("file", new File(file1).getName(), RequestBody.create(new File(file1), MEDIA_TYPE)).build();
 			
-			Request request = new Request.Builder().addHeader("User-Agent", HTTP_USER_AGENT).url(surl).post(uploadContent).build();
+			RequestBody throttledContent = new ThrottlingMultipartBody(uploadContent, this.user_config, (bytesWritten, contentLength) -> {
+				this.log.debug("upload status: " + (100 * bytesWritten / contentLength) + "%");
+				//todo: update client
+			});
+			
+			Request request = new Request.Builder().addHeader("User-Agent", HTTP_USER_AGENT).url(surl).post(throttledContent).build();
 			
 			Call call = httpClient.newCall(request);
 			Response response = call.execute();

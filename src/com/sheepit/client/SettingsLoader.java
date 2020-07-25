@@ -52,6 +52,7 @@ public class SettingsLoader {
 	private String cores;
 	private String ram;
 	private String renderTime;
+	private String maxUploadSpeed;
 	private String cacheDir;
 	private String autoSignIn;
 	private String useSysTray;
@@ -70,7 +71,7 @@ public class SettingsLoader {
 	
 	public SettingsLoader(String path_, String login_, String password_, String proxy_, String hostname_, ComputeType computeMethod_, GPUDevice gpu_,
 		int renderbucketSize_, int cores_, long maxRam_, int maxRenderTime_, String cacheDir_, boolean autoSignIn_, boolean useSysTray_, String ui_,
-		String theme_, int priority_) {
+		String theme_, int priority_, int maxUploadSpeed_) {
 		if (path_ == null) {
 			path = getDefaultFilePath();
 		}
@@ -96,6 +97,9 @@ public class SettingsLoader {
 		}
 		if (maxRenderTime_ > 0) {
 			renderTime = String.valueOf(maxRenderTime_);
+		}
+		if (maxUploadSpeed_ > 0) {
+			maxUploadSpeed = String.valueOf(maxUploadSpeed_);
 		}
 		if (computeMethod_ != null) {
 			try {
@@ -424,6 +428,10 @@ public class SettingsLoader {
 		
 		if (config.getMaxRenderTime() == -1 && renderTime != null) {
 			config.setMaxRenderTime(Integer.valueOf(renderTime));
+		}
+		
+		if (config.getMaxUploadSpeed() == 0 && maxUploadSpeed != null) {
+			config.setMaxUploadSpeed(Integer.valueOf(maxUploadSpeed));
 		}
 		
 		if (config.isUserHasSpecifiedACacheDir() == false && cacheDir != null) {

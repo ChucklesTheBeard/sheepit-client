@@ -73,6 +73,8 @@ public class Worker {
 	
 	@Option(name = "-rendertime", usage = "Maximum time allow for each frame (in minutes)", required = false) private int max_rendertime = -1;
 	
+	@Option(name = "--maxUploadSpeed", usage = "When uploading images, throttle the connection to this (in kbps)", required = false) private int max_uploadSpeed = 0;
+	
 	@Option(name = "--verbose", usage = "Display log", required = false) private boolean print_log = false;
 	
 	@Option(name = "-request-time", usage = "H1:M1-H2:M2,H3:M3-H4:M4 Use the 24h format. For example to request job between 2am-8.30am and 5pm-11pm you should do --request-time 2:00-8:30,17:00-23:00 Caution, it's the requesting job time to get a project, not the working time", metaVar = "2:00-8:30,17:00-23:00", required = false) private String request_time = null;
@@ -219,6 +221,10 @@ public class Worker {
 		
 		if (max_rendertime > 0) {
 			config.setMaxRenderTime(max_rendertime * 60);
+		}
+		
+		if (max_uploadSpeed > 0) {
+			config.setMaxUploadSpeed(max_uploadSpeed);
 		}
 		
 		if (method != null) {

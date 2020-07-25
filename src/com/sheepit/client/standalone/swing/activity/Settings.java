@@ -91,6 +91,7 @@ public class Settings implements Activity {
 	private JSlider cpuCores;
 	private JSlider ram;
 	private JSpinner renderTime;
+	private JSpinner maxUploadSpeed;
 	private JSlider priority;
 	private JTextField proxy;
 	private JTextField hostname;
@@ -490,6 +491,16 @@ public class Settings implements Activity {
 		advanced_panel.add(renderTimeLabel);
 		advanced_panel.add(renderTime);
 		
+		JLabel maxUploadSpeedLabel = new JLabel("Max upload speed (kbps, 0 = no throttle):");
+		int maxUpSpeed = 0;
+		if (parent.getConfiguration().getMaxUploadSpeed() > 0) {
+			maxUpSpeed = parent.getConfiguration().getMaxUploadSpeed();
+		}
+		maxUploadSpeed = new JSpinner(new SpinnerNumberModel(maxUpSpeed, 0, 100000000, 1)); //max 100Gbps
+		
+		advanced_panel.add(maxUploadSpeedLabel);
+		advanced_panel.add(maxUploadSpeed);
+		
 		currentRow++;
 		constraints.gridx = 0;
 		constraints.gridy = currentRow;
@@ -756,6 +767,11 @@ public class Settings implements Activity {
 				config.setMaxRenderTime(max_rendertime);
 			}
 			
+			int max_uploadspeed = 0;
+			if (maxUploadSpeed != null) {
+				config.setMaxUploadSpeed((Integer) maxUploadSpeed.getValue());
+			}
+			
 			config.setUsePriority(priority.getValue());
 			
 			String proxyText = null;
@@ -787,7 +803,7 @@ public class Settings implements Activity {
 				parent.setSettingsLoader(
 						new SettingsLoader(config.getConfigFilePath(), login.getText(), new String(password.getPassword()), proxyText, hostnameText, method,
 								selected_gpu, renderbucket_size, cpu_cores, max_ram, max_rendertime, cachePath, autoSignIn.isSelected(), useSysTray.isSelected(),
-								GuiSwing.type, themeOptionsGroup.getSelection().getActionCommand(), priority.getValue()));
+								GuiSwing.type, themeOptionsGroup.getSelection().getActionCommand(), priority.getValue(), max_uploadspeed));
 				
 				// wait for successful authentication (to store the public key)
 				// or do we already have one?

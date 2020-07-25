@@ -53,6 +53,7 @@ import lombok.Data;
 	private int nbCores;
 	private long maxMemory; // max memory allowed for render
 	private int maxRenderTime; // max render time per frame allowed
+	private int maxUploadSpeed; // max upload speed in kbps, 0 = unlimited
 	private int priority;
 	private ComputeType computeMethod;
 	private GPUDevice GPUDevice;
@@ -80,6 +81,7 @@ import lombok.Data;
 		this.nbCores = -1; // ie not set
 		this.maxMemory = -1; // ie not set
 		this.maxRenderTime = -1; // ie not set
+		this.maxUploadSpeed = 0; // ie set to "do not throttle"
 		this.priority = 19; // default lowest
 		this.computeMethod = null;
 		this.GPUDevice = null;
