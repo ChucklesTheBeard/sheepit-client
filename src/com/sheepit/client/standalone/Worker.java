@@ -73,7 +73,7 @@ public class Worker {
 	
 	@Option(name = "-rendertime", usage = "Maximum time allow for each frame (in minutes)", required = false) private int max_rendertime = -1;
 	
-	@Option(name = "--maxUploadSpeed", usage = "When uploading images, throttle the connection to this (in kbps)", required = false) private int max_uploadSpeed = 0;
+	@Option(name = "--max-upload-speed", usage = "When uploading images, throttle the connection to this (in kbps)", required = false) private int max_uploadSpeed = 0;
 	
 	@Option(name = "--verbose", usage = "Display log", required = false) private boolean print_log = false;
 	
