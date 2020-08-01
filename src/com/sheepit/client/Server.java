@@ -28,16 +28,18 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.*;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.ZipException;
+import java.util.zip.ZipInputStream;
 
 import lombok.Getter;
 import okhttp3.*;
+import okio.*;
+import org.jetbrains.annotations.NotNull;
 import org.simpleframework.xml.core.Persister;
 
 import com.sheepit.client.Configuration.ComputeType;
@@ -648,18 +650,230 @@ public class Server extends Thread {
 	class LoggingInterceptor implements Interceptor{
 		@Override public Response intercept(Interceptor.Chain chain) throws IOException {
 			Request request = chain.request();
-			
+			BufferedSink logSink = new LoggingSink();
 			long t1 = System.nanoTime();
 			log.info(String.format("Sending request %s on %s%n%s",
 				request.url(), chain.connection(), request.headers()));
+			
+			RequestBody rb = request.body();
+			if (rb == null) {
+				log.info("Request Body is null");
+			} else if (rb.contentLength() == 0) {
+				log.info("Request Body is non-null, but is empty");
+			} else {
+				Buffer bodyContents = new Buffer();
+				Request copy = request.newBuilder().build();
+				copy.body().writeTo(bodyContents);
+				logSink.writeAll(bodyContents);
+				logSink.flush(); //write to logger
+			}
 			
 			Response response = chain.proceed(request);
 			
 			long t2 = System.nanoTime();
 			log.info(String.format("Received response for %s in %.1fms%n%s",
 				response.request().url(), (t2 - t1) / 1e6d, response.headers()));
-			
+			if (response.body() == null){
+				log.info("Response Body is null.");
+				logSink.close();
+			} else if (response.body().contentLength() == 0) {
+				log.info("Response Body is non-null but 0 length.");
+				logSink.close();
+			} else {
+				ResponseBody oldBody = response.body();
+				ByteString bodyBytes = oldBody.byteString();
+				response = response.newBuilder().body(ResponseBody.create(bodyBytes,oldBody.contentType())).build();
+				oldBody.close();
+				logSink.write(bodyBytes);
+				logSink.flush();
+				logSink.close();
+			}
 			return response;
+		}
+	}
+	
+	protected final class LoggingSink implements BufferedSink {
+		okio.Buffer buffer;
+		byte[] gzip_magic_number = new byte[] {(byte)0x1f, (byte)0x8b};
+		byte[] zip_magic_number = new byte[] {(byte)0x50, (byte)0x4b};
+		byte[] png_magic_number = new byte[] {(byte)0x89, (byte)0x50};
+		
+		public LoggingSink(){
+			this.buffer = new okio.Buffer();
+		}
+		
+		@Override public void flush() throws IOException {
+			byte[] magic = buffer.peek().readByteArray(2);
+			if (Arrays.equals(magic, gzip_magic_number)) {
+				log.info("Request/Response contains GZIP encoded stuff.");
+				GZIPInputStream i = new GZIPInputStream(buffer.inputStream());
+				byte[] bytes = new byte[20000];
+				i.read(bytes);
+				i.close();
+				log.info(new ByteString(bytes).string(Charset.defaultCharset()));
+			} else if (Arrays.equals(magic, zip_magic_number)){
+				log.info("Request/Response contains ZIP encoded stuff.");
+				ZipInputStream i = new ZipInputStream(buffer.inputStream());
+				byte[] bytes = new byte[20000];
+				i.read(bytes);
+				i.close();
+				log.info(new ByteString(bytes).string(Charset.defaultCharset()));
+			} else if (Arrays.equals(magic, png_magic_number)){
+				log.info("Request/Response contains PNG image.");
+			} else if (buffer.size() > 5000) {
+				log.info("Request/Response has unknown encoding, but is over 5kB long.");
+				boolean typeFound = false;
+				try {
+					GZIPInputStream i = new GZIPInputStream(buffer.inputStream());
+					byte[] bytes = new byte[20000];
+					i.read(bytes);
+					i.close();
+					log.info(new ByteString(bytes).string(Charset.defaultCharset()));
+					typeFound = true;
+				} catch (ZipException e) {
+					log.info("Not a gzip file.");
+				}
+				/*if (!typeFound) {   //commented out because this doesn't actually seem to work; ZipInputStream doesn't throw an exception when it fails to unzip.
+					try {
+						ZipInputStream i = new ZipInputStream(buffer.inputStream());
+						byte[] bytes = new byte[20000];
+						i.read(bytes);
+						i.close();
+						log.info(new ByteString(bytes).string(Charset.defaultCharset()));
+						typeFound = true;
+					} catch (ZipException e) {
+						log.info("Not a zip file.");
+					}
+				}*/
+				if (!typeFound) {
+					log.info("Unzipping didn't work, printing first 5kB as hex:");
+					log.info(buffer.readByteString(5000).hex());
+				}
+			} else {
+				log.info(buffer.readByteString().hex());
+			}
+			buffer.flush();
+		}
+		
+		//the rest of this class is boilerplate, passing everything to the internal buffer
+		@NotNull @Override public okio.Buffer getBuffer() {
+			return buffer.getBuffer();
+		}
+		
+		@NotNull @Override public okio.Buffer buffer() {
+			return buffer.buffer();
+		}
+		
+		@NotNull @Override public BufferedSink emit() throws IOException {
+			return buffer.emit();
+		}
+		
+		@NotNull @Override public BufferedSink emitCompleteSegments() throws IOException {
+			return buffer.emitCompleteSegments();
+		}
+		
+		@NotNull @Override public OutputStream outputStream() {
+			return buffer.outputStream();
+		}
+		
+		@NotNull @Override public BufferedSink write(@NotNull byte[] bytes) throws IOException {
+			return buffer.write(bytes);
+		}
+		
+		@NotNull @Override public BufferedSink write(@NotNull byte[] bytes, int i, int i1) throws IOException {
+			return buffer.write(bytes, i, i1);
+		}
+		
+		@NotNull @Override public BufferedSink write(@NotNull ByteString byteString) throws IOException {
+			return buffer.write(byteString);
+		}
+		
+		@NotNull @Override public BufferedSink write(@NotNull ByteString byteString, int i, int i1) throws IOException {
+			return buffer.write(byteString, i, i1);
+		}
+		
+		@NotNull @Override public BufferedSink write(@NotNull Source source, long l) throws IOException {
+			return write(source, l);
+		}
+		
+		@Override public long writeAll(@NotNull Source source) throws IOException {
+			return buffer.writeAll(source);
+		}
+		
+		@NotNull @Override public BufferedSink writeByte(int i) throws IOException {
+			return buffer.writeByte(i);
+		}
+		
+		@NotNull @Override public BufferedSink writeDecimalLong(long l) throws IOException {
+			return buffer.writeDecimalLong(l);
+		}
+		
+		@NotNull @Override public BufferedSink writeHexadecimalUnsignedLong(long l) throws IOException {
+			return buffer.writeHexadecimalUnsignedLong(l);
+		}
+		
+		@NotNull @Override public BufferedSink writeInt(int i) throws IOException {
+			return buffer.writeInt(i);
+		}
+		
+		@NotNull @Override public BufferedSink writeIntLe(int i) throws IOException {
+			return buffer.writeIntLe(i);
+		}
+		
+		@NotNull @Override public BufferedSink writeLong(long l) throws IOException {
+			return buffer.writeLong(l);
+		}
+		
+		@NotNull @Override public BufferedSink writeLongLe(long l) throws IOException {
+			return buffer.writeLongLe(l);
+		}
+		
+		@NotNull @Override public BufferedSink writeShort(int i) throws IOException {
+			return buffer.writeShort(i);
+		}
+		
+		@NotNull @Override public BufferedSink writeShortLe(int i) throws IOException {
+			return buffer.writeShortLe(i);
+		}
+		
+		@NotNull @Override public BufferedSink writeString(@NotNull String s, @NotNull Charset charset) throws IOException {
+			return buffer.writeString(s, charset);
+		}
+		
+		@NotNull @Override public BufferedSink writeString(@NotNull String s, int i, int i1, @NotNull Charset charset) throws IOException {
+			return buffer.writeString(s, i, i1, charset);
+		}
+		
+		@NotNull @Override public BufferedSink writeUtf8(@NotNull String s) throws IOException {
+			return buffer.writeUtf8(s);
+		}
+		
+		@NotNull @Override public BufferedSink writeUtf8(@NotNull String s, int i, int i1) throws IOException {
+			return buffer.writeUtf8(s, i, i1);
+		}
+		
+		@NotNull @Override public BufferedSink writeUtf8CodePoint(int i) throws IOException {
+			return buffer.writeUtf8CodePoint(i);
+		}
+		
+		@Override public int write(ByteBuffer byteBuffer) throws IOException {
+			return buffer.write(byteBuffer);
+		}
+		
+		@Override public boolean isOpen() {
+			return buffer.isOpen();
+		}
+		
+		@Override public void close() throws IOException {
+			buffer.close();
+		}
+		
+		@NotNull @Override public Timeout timeout() {
+			return buffer.timeout();
+		}
+		
+		@Override public void write(@NotNull okio.Buffer b, long l) throws IOException {
+			buffer.write(b, l);
 		}
 	}
 }
