@@ -37,18 +37,8 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Getter;
+import okhttp3.*;
 import org.simpleframework.xml.core.Persister;
-
-import okhttp3.Call;
-import okhttp3.FormBody;
-import okhttp3.HttpUrl;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.JavaNetCookieJar;
 
 import com.sheepit.client.Configuration.ComputeType;
 import com.sheepit.client.Error.ServerCode;
@@ -647,11 +637,29 @@ public class Server extends Thread {
 			else {
 				builder.readTimeout(1, TimeUnit.MINUTES);    // No proxy - 60 seconds max
 			}
-			
+			builder.addNetworkInterceptor(new LoggingInterceptor());
 			return builder.build();
 		}
 		catch (Exception e) {
 			throw new RuntimeException(e);
+		}
+	}
+	
+	class LoggingInterceptor implements Interceptor{
+		@Override public Response intercept(Interceptor.Chain chain) throws IOException {
+			Request request = chain.request();
+			
+			long t1 = System.nanoTime();
+			log.info(String.format("Sending request %s on %s%n%s",
+				request.url(), chain.connection(), request.headers()));
+			
+			Response response = chain.proceed(request);
+			
+			long t2 = System.nanoTime();
+			log.info(String.format("Received response for %s in %.1fms%n%s",
+				response.request().url(), (t2 - t1) / 1e6d, response.headers()));
+			
+			return response;
 		}
 	}
 }
