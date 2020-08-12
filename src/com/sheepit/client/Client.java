@@ -27,13 +27,7 @@ import java.io.StringWriter;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Observable;
-import java.util.Observer;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadLocalRandom;
@@ -55,6 +49,8 @@ import com.sheepit.client.os.OS;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import okhttp3.HttpUrl;
+import org.jetbrains.annotations.NotNull;
 
 @Data public class Client {
 	private Gui gui;
@@ -78,6 +74,8 @@ import lombok.Data;
 	private long uploadQueueVolume;
 	private int noJobRetryIter;
 	
+	private HashSet<String> blocked_servers = new HashSet<>();
+	
 	public Client(Gui gui_, Configuration configuration, String url_) {
 		this.configuration = configuration;
 		this.server = new Server(url_, this.configuration, this);
@@ -96,6 +94,8 @@ import lombok.Data;
 		this.uploadQueueSize = 0;
 		this.uploadQueueVolume = 0;
 		this.noJobRetryIter = 0;
+		
+		this.blocked_servers.add("shepherd-gra-fr.sheepit-renderfarm.com");
 	}
 	
 	public String toString() {
@@ -705,6 +705,11 @@ import lombok.Data;
 		
 		gui.setRenderingProjectName(ajob.getName());
 		
+		if ( blocked_servers.contains(HttpUrl.parse(ajob.getValidationUrl()).host())){
+			ajob.block();
+			return Error.Type.RENDERER_KILLED_BY_USER;
+		}
+		
 		try {
 			downloadRet = this.downloadExecutable(ajob);
 			if (downloadRet != Error.Type.OK) {
@@ -929,7 +934,7 @@ import lombok.Data;
 		
 		this.isValidatingJob = true;
 		int nb_try = 1;
-		int max_try = 3;
+		int max_try = 2;
 		ServerCode ret = ServerCode.UNKNOWN;
 		Type confirmJobReturnCode = Error.Type.OK;
 		retryLoop:
@@ -956,7 +961,9 @@ import lombok.Data;
 					break retryLoop;
 					
 				default:
-					// do nothing, try to do a request on the next loop
+					// fuck it, not wasting more time on a broken project server
+					blocked_servers.add(HttpUrl.parse(ajob.getValidationUrl()).host());
+					ajob.block();
 					break;
 			}
 			
